@@ -1,9 +1,10 @@
 #define PERSON_BUFFER 100
-#define NUM_PEOPLE    10000
+#define NUM_PEOPLE    5000
+#define DECREMENT_SIZE .05
 #define DAYS_INFECTED 10
-#define EXP_PARAMETER 90.0
-#define POW_ALPHA     5
-#define POW_R_0       60.0
+#define EXP_PARAMETER 120.0
+#define POW_ALPHA     3.0
+#define POW_R_0       150.0
 #define SUSCEPTIBLE   0
 #define RECOVERED     -1
 class World
@@ -22,22 +23,22 @@ public:
   virtual ~World();
 
   person* get_people();
+  int get_count();
   int print_people(person[]);
-  bool step();
+  int step();
 
 private:
-  int generate_people(person **, int);
+  person* generate_people(int);
   int populate_person(person *);
-  int populate_people(person *, int);
   int print_person(char *, person *);
   bool contact_occurs(person, person);
   float toroidal_distance(float, float, float, float);
   int infect(int);
   int cure(int);
   int progress_sickness(int);
+  void delete_me();
 
   person* master_list;
-  int master_count;
   // Numbers of people infected, susceptible, or recovered
   int num_i;
   int num_s;

@@ -4,20 +4,17 @@
 #include <stdlib.h>
 #include <time.h>
 #include <math.h>
-#include <iostream>
-#include <fstream>
-
-using namespace std;
 
 // In the constructor of a world the list of people is generated.
 World::World() {
 	srand(time(NULL));
-  master_list = (person *) malloc(NUM_PEOPLE * sizeof(person));
-  master_count = generate_people(&master_list, NUM_PEOPLE);
   num_i = 0;
-  num_s = master_count;
+  num_s = NUM_PEOPLE;
   num_r = 0;
+  master_list = generate_people(NUM_PEOPLE);
   infect(0);
+  infect(1);
+  infect(2);
 }
 
 World::~World() {
@@ -28,17 +25,20 @@ World::~World() {
 World::person* World::get_people() {
   return master_list;
 }
+
+int World::get_count() {
+  return NUM_PEOPLE;
+}
 	
 // Creates a list of n people for the world, currently uniformly
 // randomly distributed on a (0, 1) torus.
-int World::generate_people(person **all_people, int n) {
-  int count = populate_people(*all_people, n);
-	//int i;
-	//for(i = 0; i < n; i++) {
-		//populate_person(&all_people[i]);
-	//}
-  
-	return count;
+World::person* World::generate_people(int n) {
+  person *all_people = (person *) malloc(n * sizeof(person));
+	int i;
+	for(i = 0; i < n; i++) {
+		populate_person(&all_people[i]);
+	}
+	return all_people; 
 }
 
 // Infect the person in master_list at given index and update counters
@@ -63,27 +63,46 @@ int World::infect(int index) {
 // Cure the person, but provide the index in i_list
 // We will have problems if people start to not recover in
 // monotonic increasing order
+//
+// we are switiching whichever person is about to be cured with
+// the last infected person, because the cured person will be susceptible
 int World::cure(int index) {
+  //sometimes we try to cure already cured people. don't do that!
+  if(master_list[index].status == SUSCEPTIBLE) {
+    return -1;
+  }
+
   int first_infected = num_r;
+  int last_infected = num_r + num_i - 1;
   int first_susceptible = num_r + num_i;
+  printf("%d, %d, %d\n", first_infected, index, first_susceptible);
   assert(index >= first_infected && index < first_susceptible);
 
+  assert(master_list[index].status > SUSCEPTIBLE);
+  //master_list[index].status = SUSCEPTIBLE;
+
   // Switch places to maintain list order, if necessary.
-  if(first_infected != index) {
-    person temp = master_list[first_infected];
-    master_list[first_infected] = master_list[index];
+  if(last_infected != index) {
+    assert(master_list[last_infected].status > SUSCEPTIBLE);
+    person temp = master_list[last_infected];
+    master_list[last_infected] = master_list[index];
     master_list[index] = temp;
   }
 
-  master_list[first_infected].status = RECOVERED;
-  num_r++;
+
+  num_s++;
   num_i--;
-  return 0;
+
+
+  return last_infected;
 }
 
 int World::progress_sickness(int index) {
-  //people don't get better, so we are under the SI model
-  //master_list[index].status--;
+  
+  //change to turn into SI model
+  return 0;
+
+  master_list[index].status--;
   if(master_list[index].status == SUSCEPTIBLE)
     cure(index);
 }
@@ -94,7 +113,7 @@ int World::print_people(person* list) {
   int i;
   char buffer[PERSON_BUFFER];
 
-  for(i = 0; i < master_count; i++) {
+  for(i = 0; i < NUM_PEOPLE; i++) {
     printf("%d\n", i);
 		print_person(buffer, &list[i]);
 		printf("%s\n", buffer);
@@ -111,29 +130,6 @@ int World::populate_person(person * p) {
 	return 0;
 }
 
-int World::populate_people(person *people, int n) {
-  ifstream file("data31.txt", ifstream::in);
-  //these are hardcoded for now, maybe they should be read from the file in the future
-  int xdim = 201;
-  int ydim = 201;
-  char value[30];
-  int i;
-  int j = 0;
-	for(i = 0; i < n; i++) {
-    people[j].status = 0;
-    file.getline(value, 30, ' ');
-    people[j].x = atof(value);
-    file.getline(value, 30, '\n');
-    people[j].y = atof(value);
-    //By incrementing j every other time we halve the data size
-    if(3 == i%4) {
-      j++;
-    }
-  }
-  printf("%d\n", j);
-  return j;
-}
-
 // Takes a person and generates a string representing that person
 int World::print_person(char *str, person *p) {
 	sprintf(str, "%d, (%f, %f)", p->status, p->x, p->y);
@@ -141,28 +137,65 @@ int World::print_person(char *str, person *p) {
 }
 
 // Progress the world one step, propegating infection status when appropriate
-bool World::step() {
-  assert(num_s + num_i + num_r == master_count);
+int World::step() {
+  assert(num_s + num_i + num_r == NUM_PEOPLE);
   int old_num_i = num_i;
   int old_num_r = num_r;
   for(int i = num_r; i < old_num_r + old_num_i; i++) {
     int old_num_s = num_s;
-    for(int j = num_r + num_i; j < master_count; j++) {
+    for(int j = num_r + num_i; j < NUM_PEOPLE; j++) {
       float r = rand()/((float)RAND_MAX + 1);
       if(i == j) {
+        delete_me();
         assert(false);
       }
-      assert(i != j);
-      assert(master_list[j].status == SUSCEPTIBLE && master_list[i].status > SUSCEPTIBLE);
-      if(contact_occurs(master_list[i], master_list[j]))
+      if(contact_occurs(master_list[i], master_list[j])) {
         infect(j);
+      }
     }
 
     progress_sickness(i);
   }
-  return (num_i != 0);
+  
+  //move all people one step to the left
+  for(int i = 0; i < NUM_PEOPLE; i++) {
+    master_list[i].x = master_list[i].x - DECREMENT_SIZE;
+    if(master_list[i].x <= 0) {
+      //this person is cured and sent to a random location on the right border
+      master_list[i].y = rand()/((float)RAND_MAX + 1);
+      master_list[i].x = 1 - (DECREMENT_SIZE * (rand()/((float)RAND_MAX + 1)));
+      if(master_list[i].status != SUSCEPTIBLE) {
+        master_list[i].status = SUSCEPTIBLE;
+      }
+    }
+  }
+
+  //go through and properly order list. everybody set to susceptible needs to be
+  //switched to the end
+  for(int i = num_r+num_i-1; i >= 0; i--) {
+    if(master_list[i].status == SUSCEPTIBLE) {
+      int last_infected = num_r+num_i-1;
+      if(i != last_infected) {
+        //swap the two
+        person temp = master_list[i];
+        master_list[i] = master_list[last_infected];
+        master_list[last_infected] = temp;
+      }
+      num_s++;
+      num_i--;
+    }
+  }
+  
+  //delete_me();
 }
 
+void World::delete_me() {
+  printf("TEMPTEMPTEMPTEMPTEMP, s: %d, i: %d, r: %d\n", num_s, num_i, num_r);
+  for(int i = 0; i < NUM_PEOPLE; i++) {
+    printf("%d ,", master_list[i].status);
+  }
+  printf("\n");
+}
 
 
 // Randomly simulate contact between people. People are more likely to
@@ -174,10 +207,10 @@ bool World::contact_occurs(person a, person b) {
   float u = rand()/((float)RAND_MAX + 1);
 
   // exponential random variable
-  //float e = exp(-EXP_PARAMETER * d);
+  //float e = log(1-u)/ (-EXP_PARAMETER);
 
-  // power law random variable
   float p = pow(1 + pow(d*POW_R_0, POW_ALPHA), -1);
+
   return u < p;
 }
 
@@ -191,10 +224,11 @@ float World::toroidal_distance(float x1, float x2, float y1, float y2) {
   if(dy < 0)
     dy = dy * -1.0;
 
+  /* Remove toroidal distance because we are talking about a strip now.
   if(dx > .5)
     dx = 1.0 - dx;
   if(dy > .5)
-    dy = 1.0 - dy;
+    dy = 1.0 - dy;*/
 
   // toroidal distance between people (max = sqrt(2)/2)
   return sqrt(dx*dx + dy*dy);
